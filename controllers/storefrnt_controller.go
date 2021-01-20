@@ -18,13 +18,18 @@ package controllers
 
 import (
 	"context"
-
 	"github.com/go-logr/logr"
+	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	storev1beta1 "test-operator/api/v1beta1"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 // StoreFrntReconciler reconciles a StoreFrnt object
@@ -37,6 +42,7 @@ type StoreFrntReconciler struct {
 // +kubebuilder:rbac:groups=store.example.com,resources=storefrnts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=store.example.com,resources=storefrnts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=store.example.com,resources=storefrnts/finalizers,verbs=update
+// +kubebuilder:rbac:groups=apps,resources=Deployment,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -48,16 +54,80 @@ type StoreFrntReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *StoreFrntReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = r.Log.WithValues("storefrnt", req.NamespacedName)
+	ctx = context.Background()
+	log := r.Log.WithValues("storefrnt", req.NamespacedName)
 
 	// your logic here
+	storefrnt := &storev1beta1.StoreFrnt{}
+	err := r.Get(ctx, req.NamespacedName, storefrnt)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, err
+	}
 
+
+	found := &appsv1.Deployment{}
+	toFind := types.NamespacedName{
+		Name:      storefrnt.Name,
+		Namespace: storefrnt.Namespace,
+	}
+	err = r.Get(ctx, toFind, found)
+	if err != nil && errors.IsNotFound(err) {
+		deployment := newDeployment(storefrnt)
+		if err := controllerutil.SetControllerReference(storefrnt, deployment, r.Scheme); err != nil {
+			return ctrl.Result{}, err
+		}
+		err = r.Create(ctx, deployment)
+		if err != nil {
+			log.Error(err, "Failed to create Deployment", "deployment.name", deployment.Name)
+			return ctrl.Result{}, err
+		}
+		log.Info("Returned custom object", "name", req.NamespacedName.Name)
+		return ctrl.Result{Requeue: true}, nil
+	}
 	return ctrl.Result{}, nil
+}
+
+func newDeployment(storefrnt *storev1beta1.StoreFrnt) *appsv1.Deployment {
+	labels := map[string]string{
+		"app": storefrnt.Name,
+	}
+	replicas := int32(2)
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      storefrnt.Name,
+			Namespace: storefrnt.Namespace,
+			Labels:    labels,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:    "busybox",
+							Image:   "busybox",
+							Command: []string{"sleep", "3600"},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *StoreFrntReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&storev1beta1.StoreFrnt{}).
+		Owns(&appsv1.Deployment{}).
 		Complete(r)
 }

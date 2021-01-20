@@ -28,19 +28,21 @@ type StoreFrntSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of StoreFrnt. Edit StoreFrnt_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Size is an example field of StoreFrnt. Edit StoreFrnt_types.go to remove/update
+	Size     int32  `json:"size,omitempty"`
+	Location string `json:"location,omitempty"`
 }
 
 // StoreFrntStatus defines the observed state of StoreFrnt
 type StoreFrntStatus struct {
+	Phase string `json:"phase,omitempty"`
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
+// +kubebuilder:resource:shortName=sf
 // StoreFrnt is the Schema for the storefrnts API
 type StoreFrnt struct {
 	metav1.TypeMeta   `json:",inline"`
