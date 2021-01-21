@@ -67,7 +67,6 @@ func (r *StoreFrntReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-
 	found := &appsv1.Deployment{}
 	toFind := types.NamespacedName{
 		Name:      storefrnt.Name,
